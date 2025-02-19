@@ -1,0 +1,481 @@
+---
+title: "Multilevel_Modelling"
+author: "Parth Chandan"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+```{r}
+# List of packages required
+packages <- c("lme4", "ggplot2", "dplyr", "tidyr")
+
+# Check if each package is installed, if not, install it
+installed_packages <- packages %in% installed.packages()[, "Package"]
+if (any(!installed_packages)) {
+  install.packages(packages[!installed_packages])
+}
+# Load the necessary package
+library(lme4)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+
+***
+
+## Section 1 
+
+### Overview
+
+This section is based on the following manuscript which you can access online at https://www.frontiersin.org/articles/10.3389/fpubh.2023.1059878/pdf
+
+>Liu, Meicen, et al. "Patient healthcare experiences of cancer hospitals in China: a multilevel modeling analysis based on a national survey." Frontiers in Public Health 11 (2023): 1059878.
+
+This study used cross-sectional survey data from 30 tertiary cancer hospitals in China to examine patient satisfaction levels and between-hospital variation.
+
+### Question 1. 
+
+What is the hierarchical data structure for this analysis? 
+The hierarchical data structure for analysis is a two-level model. 
+**Level 1:**
+At level 1 we have patients. Each patient has its own variables such as age,sex,gender,cancer type, cancer stage, and self-reported health status, along with satisfaction scores.
+
+
+**Level 2:**
+At level 2 we have hospitals. At the hospital level, there are variables related to the hospital environment, resources, and administrative practices, which may influence overall patient satisfaction.
+
+
+
+### Question 2. 
+
+With reference to appropriate Figure(s) or Table(s), I try to understand the national-level hospitals are performing better or worse compared to provincial-level hospitals for the five satisfaction measures, having accounted for case-mix. 
+
+The study includes survey of 30 tertiary cancer hospitals across 28 province in China, from which 3 national-level hospitals were labeled as "NA", "NB", "NC". The national hospitals showed significant variability in patient satisfaction scores across different aspects of care, including administrative processes, hospital environment, medical care, and symptom management.
+
+From the supplementary materials provided in the paper(eTable 3):
+
+**Hospital NA:**
+Rated as "average" for administrative process, hospital environment, and symptom management.
+Scored "worse" for medical care and overall satisfaction.
+
+**Hospital NB:**
+Rated as "average" across all five aspects, indicating a consistent performance without notable high or low scores.
+
+**Hospital NC:**
+Rated "better" for administrative process, hospital environment, and medical care.
+Rated "average" for symptom management.
+Scored "better" for overall satisfaction.
+
+In summary, NC is the best among the three national hospital, NB maintains an average rating across all categories , whereas NA has mixed ratings with lower scores in medical care and overall satisfaction.
+
+## Section 2 
+
+### Overview
+
+I had the dataset `hospSatisfaction.Rda` which contains fictitious data on patient satisfactions scores. Each row in this dataset represents one patient. My aim is to develop a multilevel model of patient satisfaction based on the available patient-level and hospital-level variables.
+
+The dataset includes information on the following 8 variables:
+
+* **id** Unique hospital indicator
+* **status** Hospital type (public/private)
+* **area** Remoteness of hospital area (Remote/Regional/Urban)
+* **sex** Patient sex (Male/Female)
+* **age** Patient age (years)
+* **los** Patient length of stay (days)
+* **readmission** Had the patient been admitted to the same hospital in the past 12 months (yes/no)
+* **satisfaction** Patient satisfaction score
+
+### Question 1. 
+I undertake an exploratory data analysis of the available data 
+
+**Load the hospital data:**
+```{r dataset}
+# Load the dataset
+load("hospSatisfaction.Rda")
+```
+
+**Summary Statistics for all variables**
+```{r summary}
+df <- hospSatisfaction
+summary(df)
+```
+
+**Check for missing values**
+```{r missing_vaues}
+colSums(is.na(df))
+```
+
+
+There are no missing values
+
+
+**Frequency distribution for categorical variables**
+```{r frquency_distribution}
+table(df$status)
+table(df$area)
+table(df$sex)
+table(df$readmission)
+```
+
+
+
+**Interpretations**
+Majority of patients are in public hospitals.
+Most patients come from urban areas, followed by regional, with smallest proportion in remote areas.
+There is an almost equal split between male and female.
+Most patients have not been readmitted
+
+
+# Histograms for numerical variables
+```{r hist_age}
+hist(df$age, main = "Age Distribution", xlab = "Age", col = "lightblue", breaks = 10)
+```
+
+
+**Interpretation**
+The age is approximately normally distributed ranging from 50 to 80.
+
+
+```{r hist_los}
+hist(df$los, main = "Length of Stay Distribution", xlab = "Length of Stay (days)", col = "lightgreen", breaks = 10)
+```
+
+
+**Interpretation**
+The length of stay is right-skewed distribution, indicating high frequency of shorter stays and only a small number of patients having longer stay.
+
+```{r hist_sat_score}
+hist(df$satisfaction, main = "Satisfaction Score Distribution", xlab = "Satisfaction Score", col = "lightpink", breaks = 10)
+```
+
+
+
+**Interpretation**
+The satisfaction score distribution is approximately normal, with a central peak around 40–60, tapering off toward lower and higher ends.
+
+**Box plots to examine satisfaction scores across categories**
+```{r boxplot1}
+boxplot(satisfaction ~ status, data = df, main = "Satisfaction by Hospital Type", xlab = "Hospital Type", ylab = "Satisfaction Score", col = "lightblue")
+```
+
+
+
+**Interpretations**
+The boxplot shows that satisfaction scores tend to be slightly higher for private hospital patients compared to public hospital patients.
+
+```{r boxplot2}
+boxplot(satisfaction ~ area, data = df, main = "Satisfaction by Hospital Area", xlab = "Hospital Area", ylab = "Satisfaction Score", col = "lightgreen")
+
+```
+
+
+
+Patients in remote hospitals tend to report higher satisfaction scores than those in regional and urban hospitals, as indicated by the higher median score.
+
+
+```{r boxplot3}
+boxplot(satisfaction ~ sex, data = df, main = "Satisfaction by Patient Sex", xlab = "Sex", ylab = "Satisfaction Score", col = "lightcoral")
+```
+
+Satisfaction scores for female patients are slightly higher on average than those for male patients, with females having a slightly higher median
+This could suggest that female patients report a marginally better experience or have different expectations and perceptions of care compared to male patients.
+
+
+**Bar plots for categorical variables**
+```{r barplot1}
+barplot(table(df$status), main = "Hospital Type Distribution", col = "skyblue", xlab = "Hospital Type")
+```
+
+
+```{r barplot2}
+barplot(table(df$area), main = "Hospital Area Distribution", col = "lightgreen", xlab = "Hospital Area")
+```
+
+
+```{r barplot3}
+barplot(table(df$sex), main = "Sex Distribution", col = "lightpink", xlab = "Sex")
+```
+
+
+
+```{r barplot4}
+barplot(table(df$readmission), main = "Readmission Distribution", col = "lightyellow", xlab = "Readmission (yes/no)")
+```
+
+
+The graphs show the visual representation done earlier through table.
+
+
+### Question 2. 
+Fit a series of multilevel models and select the best-fitting model for the data 
+
+
+To fit a multilevel model, we need to define the two levels of hierarchy. Here, the first level represents individual patients, while the second level represents hospitals, indicated by the hospital ID.
+
+Let's start by fitting a null model:
+```{r null_model}
+m0 <- lmer(satisfaction ~ 1 + (1 | id), data = df)
+summary(m0)
+```
+
+
+The intercept estimate of 54.9 signifies the mean satisfaction level across all patients. 
+
+The next aim is to check what proportion of the total variance is attributable to variation within-groups.
+For this we can use VPC (Variation Partition Coefficient)
+
+VPC = Variance of id/(Variance of id + Residual Variance)
+
+```{r vpc}
+vpc <- 130.19/(130.19 + 67.55)
+print(vpc)
+```
+
+
+Approximately 65.8% of the variance in satisfaction scores is due to differences between hospitals, while the remaining 34.2% is due to individual differences within hospitals. This high VPC indicates that hospital-level factors have a strong influence on satisfaction.
+
+
+Lets add status to the fixed part
+```{r m1}
+m1 <- lmer(satisfaction ~ status + (1 | id), data = df)
+summary(m1)
+anova(m0, m1)
+```
+
+This indicates that patients with public status have an average satisfaction score that is 14.88 points lower than private status patients, with this difference being statistically significant
+Anova results show that adding status significantly improves the model.
+
+Lets repeat the process and keep adding variables to the fixed part.
+```{r m2}
+# Model 2: Add 'area'
+m2 <- lmer(satisfaction ~ status + area + (1 | id), data = df)
+summary(m2)
+anova(m1, m2)  
+```
+
+Anova results show that adding area significantly improves the model.
+Patients in remote areas have an average satisfaction score that is 18.27 points higher than those in regional areas (the reference).
+Patients in urban areas have a satisfaction score that is slightly lower (by 1.79 points) compared to those in regional areas, though this effect is not statistically significant 
+
+Lets add sex variable.
+```{r m3}
+# Model 3: Add 'sex'
+m3 <- lmer(satisfaction ~ status + area + sex + (1 | id), data = df)
+summary(m3)
+anova(m2, m3)  
+```
+
+Anova results show that adding sex significantly improves the model.
+
+Lets add age to the fixed part
+```{r m4}
+# Model 4: Add 'age'
+m4 <- lmer(satisfaction ~ status + area + sex + age + (1 | id), data = df)
+summary(m4)
+anova(m3, m4) 
+```
+
+Anova results show that adding age significantly improves the model.
+
+
+Lets add readdmission
+```{r m5}
+# Model 5: Add 'readmission'
+m5 <- lmer(satisfaction ~ status + area + sex + age + readmission + (1 | id), data = df)
+summary(m5)
+anova(m4, m5)  # Compare with the previous model
+```
+
+Anova results show that adding readmission does significantly improves the model.
+
+
+Lets add length of stay
+```{r m6}
+m6 <- lmer(satisfaction ~ status + area + sex + age + readmission + los + (1 | id), data = df)
+summary(m6)
+anova(m5, m6)
+```
+Anova results show that adding los does not significantly improves the model.
+
+So m5 is the best model so far.
+Model 5 assumes that the effect of status (public vs. private) on satisfaction is the same across all hospitals, which may not accurately reflect reality.Different hospitals might experience varying levels of impact from the status variable due to distinct policies, resources, and patient demographics.
+
+To allow for more flexibility, lets add status to the random slope. By adding this random slope, I allow the effect of status on satisfaction to vary across hospitals.
+Basically, I want to see if the relationship between patient satisfaction can differ based on if its a public or private hospital.
+
+```{r m7}
+# Model with random intercept and random slope for 'status' by hospital
+m7 <- lmer(satisfaction ~ status + area + sex + age + readmission + (1 + status|id), data = df)
+
+# Display the summary of the new model
+summary(m7)
+
+# Compare the new model with the previous best model (m5)
+anova(m5, m7)
+```
+The anova test results show that adding status to random slope does improve the model.
+
+
+Till now, we have used a 2 level structure. What if we make it a three level structure. Such that hospitals are further nested into areas.
+```{r m8}
+m8 <- lmer(satisfaction ~ status + area + sex + age + readmission + (1 | area/id), data = df)
+summary(m8)
+anova(m7,m8)
+```
+
+The model fails to converge.This further suggest m7 is better model.Non-convergence suggests that the model is struggling to estimate the random effects reliably, particularly for the random slopes within id nested in area.
+One of the reasons could be insufficient data.
+
+
+Thus the chosen model is:
+m7 <- lmer(satisfaction ~ status + area + sex + age + readmission + (1 + status|id), data = df)
+
+
+### Question 3. 
+With the best model,I check the model validity and communicate the model results using appropriate visualisations 
+
+Lets check the model assumptions.
+
+
+One of the way would be to check if the residuals are normally distributed.
+
+
+```{r residuals}
+ggplot(data.frame(residuals = resid(m7)), aes(x = residuals)) +
+  geom_histogram(color = 'black', fill = 'skyblue', bins = 30) +
+  labs(title = "Histogram of Residuals", x = "Residuals")
+```
+
+
+
+The histogram shows a roughly normal distribution, which supports the model’s assumption of normally distributed residuals.
+
+
+Let's visually check if the residuals follow a normal distribution by comparing them to a theoretical normal distribution. 
+```{r qq_plot}
+# QQ plot of residuals
+qqnorm(resid(m7))
+qqline(resid(m7), col = "red")
+```
+
+
+The residuals lie closely along the red line, suggesting that they are approximately normally distributed, meeting an important model assumption.
+
+
+Lets check for homoscedasticity.
+```{r homoscedasticity}
+# Residuals vs. fitted values plot
+plot(fitted(m7), resid(m7), xlab = "Fitted Values", ylab = "Residuals",
+     main = "Residuals vs. Fitted Values")
+abline(h = 0, col = "red")
+```
+
+
+The residuals appear randomly scattered around zero, indicating that there is no clear pattern, which supports the assumption of homoscedasticity.
+
+
+
+Lets check how each hospital’s baseline satisfaction level deviates from the average.
+```{r table}
+re1 <- ranef(m7)
+re1DF <- as.data.frame(re1)
+head(re1DF)
+```
+
+
+The above tables gives us the residuals at hospital level. Lets plot it to check if they are normally distributed.
+ 
+```{r residuals_hospital}
+ggplot(
+  data=re1DF, 
+  aes(x=condval)) +
+  geom_histogram(fill='#158cba', 
+                 color='white', 
+                 bins=9)
+```
+
+
+The residuals look almost normally distributed. Thus the model assumptions are met and model estimates are likely to be unbiased and reliable.
+
+Lets visualise the variablity in random intercept. This will help to asses how much each hospital's baseline satisfaction differs from the overall mean.
+
+```{r caterpillar_plot}
+re1DF |> 
+  arrange(condval) |> 
+  mutate(id = row_number()) |> 
+    ggplot(aes(x = id, y = condval)) + 
+    geom_hline(aes(yintercept=0), color='red') + 
+    geom_linerange((aes(ymin = condval - 1.96*condsd, 
+                      ymax = condval + 1.96*condsd)),
+                   color = 'grey60') +   
+    geom_point(color="#158cba", size=0.8) + 
+    labs(y='Random intercept', x='id') 
+```
+
+
+A caterpillar plot shows the estimated random effect for each level 2 unit, ordered from low to high.
+The plot shows that different hospitals have different baseline levels of satisfaction, as indicated by the spread of random intercepts above and below the red line. 
+The resulting plot highlights variation in the random intercept across level two units (here hospitals), and allows us to identify hospitals with above-average and below-average satisfaction levels.
+
+
+
+
+Let's evaluate the model’s predictive accuracy by comparing predicted values with observed values
+```{r predict_vs_obs}
+
+#Predicted vs Observed Plot
+pred_values <- data.frame(observed = df$satisfaction, predicted = predict(m7))
+ggplot(pred_values, aes(x = observed, y = predicted)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, color = "red") +
+  labs(title = "Predicted vs Observed Satisfaction", x = "Observed Satisfaction", y = "Predicted Satisfaction")
+```
+
+
+The points are closely aligned with the red line, suggesting that the model’s predictions align well with observed satisfaction values, indicating good predictive accuracy.
+
+
+### Question 4. 
+For the model, I provide a written interpretation of all of the model parameters 
+
+
+**The chosen model is:**
+m7 <- lmer(satisfaction ~ status + area + sex + age + readmission + (1 + status|id), data = df)
+
+**Fixed effects:**
+The intercept 39.218933 represents the average satisfaction level for a baseline individual in the reference category of each categorical variable.
+Status (statuspublic): -13.653034
+Indicates that public status is associated with a 13.65 point decrease in satisfaction compared to the baseline status.
+Area:
+
+Arearemote: 17.811035, indicating that patients in remote areas have 17.81 points higher satisfaction compared to the baseline area.
+Areaurban: -0.898218, showing a slight, non-significant decrease in satisfaction for urban areas compared to the baseline.
+
+Sex (sexM): -7.219516
+Indicates that males report a 7.22-point decrease in satisfaction compared to the baseline (females), with a highly significant effect
+
+Age: 0.340081
+Shows that satisfaction increases by 0.34 points for each additional year of age, a positive and significant relationship.
+
+Readmission (readmissionYes): 5.437516
+Patients with readmissions have, on average, a 5.44-point increase in satisfaction compared to those without readmissions, which is highly significant 
+
+The reference group in your model is:
+Regional hospitals for the area variable.
+Female for the sex variable.
+No readmission for the readmission variable.
+Private status for the status variable.
+
+
+**Random Intercept for id:**
+Variance: 3.476, indicating moderate variability in the baseline satisfaction levels across different individuals (id).
+Standard Deviation: 1.864, providing the scale of this variability.
+
+Random Slope for Status within id:
+Variance: 15.550, suggesting a relatively high variability in the effect of status across individuals.
+Standard Deviation: 3.943, showing the degree of variation in satisfaction based on status across individuals.
+Correlation between the random intercept and the random slope for status is 0.00, indicating no relationship between individual baseline satisfaction levels and how status affects satisfaction.
