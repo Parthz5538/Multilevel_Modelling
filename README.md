@@ -4,7 +4,7 @@ This repository contains a detailed multilevel modeling analysis based on a fict
 
 ## 📁 Files
 
-- `Multilevel_Modelling.Rmd`: Main analysis file containing code and interpretation.
+- `Instructions.Rmd`: Main analysis file containing code and interpretation.
 - `hospSatisfaction.Rda`: Simulated dataset used for the analysis.
 
 ## 🧠 Project Overview
